@@ -4,3 +4,4 @@ TTS
 soundfile 
 pandas
 pip 26.0
+python 3.11
