@@ -1,58 +1,48 @@
 import streamlit as st
+from gtts import gTTS
+from pydub import AudioSegment
+from pydub.playback import play
+import io
 import pandas as pd
-from phonemizer import phonemize
-from TTS.api import TTS
-import soundfile as sf
-from tempfile import NamedTemporaryFile
 
-st.title("Phoneme-Level Text-to-Speech Generator")
+st.title("Text-to-Speech with Timing Control")
 
-# --- User Input ---
-text_input = st.text_area("Enter Text:", "Hello world!")
+text = st.text_area("Enter text")
 
-if text_input.strip():
+speed = st.slider("Speech Speed Multiplier", 0.5, 2.0, 1.0)
+pause_ms = st.slider("Pause Between Words (ms)", 0, 800, 150)
 
-    # --- Convert text to phonemes ---
-    phonemes = phonemize(text_input, language='en-us', backend='espeak', strip=True)
-    phoneme_list = phonemes.split()
-    
-    st.subheader("Phoneme Breakdown")
-    st.write(phoneme_list)
+if st.button("Generate Speech") and text.strip():
 
-    # --- Create editable DataFrame for phoneme timing ---
-    df = pd.DataFrame({
-        "Phoneme": phoneme_list,
-        "Duration (s)": [0.2] * len(phoneme_list)  # default 0.2s per phoneme
-    })
+    words = text.split()
 
-    edited_df = st.experimental_data_editor(df, num_rows="dynamic")
+    combined = AudioSegment.empty()
 
-    # --- Generate Speech Button ---
-    if st.button("Generate Speech"):
-        # Convert durations to list
-        durations = edited_df["Duration (s)"].tolist()
+    for word in words:
+        tts = gTTS(word)
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
 
-        # Load TTS model
-        tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False)
+        segment = AudioSegment.from_file(buf, format="mp3")
 
-        # Generate speech with phoneme-level durations
-        with NamedTemporaryFile(delete=False, suffix=".wav") as f:
-            output_file = f.name
+        # adjust speed
+        segment = segment._spawn(
+            segment.raw_data,
+            overrides={"frame_rate": int(segment.frame_rate * speed)}
+        ).set_frame_rate(segment.frame_rate)
 
-        tts.tts_to_file(
-            phonemes=" ".join(phoneme_list),
-            file_path=output_file,
-            speaker=None,   # default speaker
-            phoneme_durations=durations  # specify duration per phoneme
-        )
+        combined += segment
+        combined += AudioSegment.silent(duration=pause_ms)
 
-        # --- Playback ---
-        st.audio(output_file, format="audio/wav")
-        st.success("Speech generated! Play above or download below.")
+    output_buf = io.BytesIO()
+    combined.export(output_buf, format="mp3")
 
-        st.download_button(
-            label="Download Speech",
-            data=open(output_file, "rb").read(),
-            file_name="tts_output.wav",
-            mime="audio/wav"
-        )
+    st.audio(output_buf.getvalue(), format="audio/mp3")
+
+    st.download_button(
+        "Download Audio",
+        data=output_buf.getvalue(),
+        file_name="speech.mp3",
+        mime="audio/mp3"
+    )
