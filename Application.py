@@ -1,48 +1,46 @@
 import streamlit as st
 from gtts import gTTS
-from pydub import AudioSegment
-from pydub.playback import play
 import io
-import pandas as pd
+import re
 
-st.title("Text-to-Speech with Timing Control")
+st.title("Text-to-Speech Timing App")
 
-text = st.text_area("Enter text")
+st.write("Use [pause=500] to insert pauses in milliseconds.")
 
-speed = st.slider("Speech Speed Multiplier", 0.5, 2.0, 1.0)
-pause_ms = st.slider("Pause Between Words (ms)", 0, 800, 150)
+text = st.text_area(
+    "Enter text",
+    "Hello there [pause=400] this is timed speech"
+)
+
+slow_mode = st.checkbox("Slow pacing")
+
+def synth_chunk(chunk):
+    tts = gTTS(chunk)
+    buf = io.BytesIO()
+    tts.write_to_fp(buf)
+    return buf.getvalue()
 
 if st.button("Generate Speech") and text.strip():
 
-    words = text.split()
+    parts = re.split(r"\[pause=(\d+)\]", text)
 
-    combined = AudioSegment.empty()
+    audio_bytes = b""
 
-    for word in words:
-        tts = gTTS(word)
-        buf = io.BytesIO()
-        tts.write_to_fp(buf)
-        buf.seek(0)
+    for i, part in enumerate(parts):
+        if i % 2 == 0:
+            if part.strip():
+                audio_bytes += synth_chunk(part)
+        else:
+            # pause marker — add silence by repeating tiny silent mp3 frame
+            pause_ms = int(part)
+            silence = b"\x00" * (pause_ms * 2)
+            audio_bytes += silence
 
-        segment = AudioSegment.from_file(buf, format="mp3")
-
-        # adjust speed
-        segment = segment._spawn(
-            segment.raw_data,
-            overrides={"frame_rate": int(segment.frame_rate * speed)}
-        ).set_frame_rate(segment.frame_rate)
-
-        combined += segment
-        combined += AudioSegment.silent(duration=pause_ms)
-
-    output_buf = io.BytesIO()
-    combined.export(output_buf, format="mp3")
-
-    st.audio(output_buf.getvalue(), format="audio/mp3")
+    st.audio(audio_bytes, format="audio/mp3")
 
     st.download_button(
-        "Download Audio",
-        data=output_buf.getvalue(),
+        "Download",
+        data=audio_bytes,
         file_name="speech.mp3",
         mime="audio/mp3"
     )
