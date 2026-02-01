@@ -111,29 +111,50 @@ if st.button("Generate Speech"):
 
         st.audio(audio_bytes)
         st.download_button("Download Audio", audio_bytes, "prosody_speech.mp3", "audio/mp3")
-
         st.success("Generated with profile & custom parameters")
 
-        # ---------- Spectrogram ----------
+        # ---------- Spectrogram Simulation ----------
         if show_spec:
-            # Convert bytes to numeric array (simulate waveform)
-            data = np.frombuffer(audio_bytes[:50000], dtype=np.uint8)
-            cluster_labels = []
-            # Simple simulation: label ~ for ritual, | or text for trade
-            for word in final_text.split():
+            # Create synthetic waveform: consonant bursts + vowel sustains
+            sample_rate = 8000
+            duration_per_word = 0.4  # seconds per word
+            consonant_duration = 0.05
+
+            words = final_text.split()
+            waveform = np.array([], dtype=np.float32)
+            colors = []
+
+            for word in words:
+                # Consonant burst
+                cons_samples = np.random.uniform(-1,1,int(consonant_duration*sample_rate))
+                waveform = np.concatenate([waveform, cons_samples])
+                
+                # Vowel sustain based on vowel_mode
+                vowel_len = {"short":0.1,"normal":0.2,"long":0.35}
+                vowel_samples = np.random.uniform(-0.3,0.3,int(vowel_len.get(vowel_mode,"normal")*sample_rate))
+                waveform = np.concatenate([waveform, vowel_samples])
+
+                # Cluster type
                 if "~" in word or vowel_mode=="long":
-                    cluster_labels.append(1)  # ritual
+                    colors.append("orange")  # ritual
                 else:
-                    cluster_labels.append(0)  # trade
+                    colors.append("blue")    # trade
 
-            fig, ax = plt.subplots(figsize=(10,3))
-            ax.specgram(data, Fs=8000, NFFT=256, noverlap=128, cmap="Blues")
-            # Overlay color bars
-            for idx, label in enumerate(cluster_labels):
-                color = "orange" if label==1 else "blue"
-                ax.axvspan(idx*50, (idx+1)*50, facecolor=color, alpha=0.2)
+            # Generate spectrogram
+            fig, ax = plt.subplots(figsize=(12,4))
+            Pxx, freqs, bins, im = ax.specgram(waveform, Fs=sample_rate, NFFT=256, noverlap=128, cmap="Greys")
 
-            ax.set_title("Spectrogram (Blue=Trade, Orange=Ritual)")
+            # Overlay color-coded blocks
+            current_sample = 0
+            for idx, word in enumerate(words):
+                total_samples = int(duration_per_word*sample_rate)
+                color = colors[idx]
+                ax.axvspan(current_sample/sample_rate, (current_sample+total_samples)/sample_rate, facecolor=color, alpha=0.2)
+                current_sample += total_samples
+
+            ax.set_title("Spectrogram (Blue=Trade, Orange=Ritual) | Consonant Peaks & Vowel Length Shown")
+            ax.set_ylabel("Frequency [Hz]")
+            ax.set_xlabel("Time [s]")
             st.pyplot(fig)
 
     except Exception as e:
