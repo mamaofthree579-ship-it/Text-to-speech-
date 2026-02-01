@@ -5,42 +5,53 @@ import re
 
 st.title("Text-to-Speech Timing App")
 
-st.write("Use [pause=500] to insert pauses in milliseconds.")
+st.write("Insert pauses with: [pause=500] (milliseconds)")
 
 text = st.text_area(
     "Enter text",
-    "Hello there [pause=400] this is timed speech"
+    "Hello there [pause=600] this system is working."
 )
 
-slow_mode = st.checkbox("Slow pacing")
+speed_style = st.selectbox(
+    "Speech pacing",
+    ["Normal", "Slow", "Very Slow"]
+)
 
-def synth_chunk(chunk):
-    tts = gTTS(chunk)
-    buf = io.BytesIO()
-    tts.write_to_fp(buf)
-    return buf.getvalue()
+def expand_pauses(t):
+    def repl(match):
+        ms = int(match.group(1))
+        # convert ms to punctuation pauses gTTS understands
+        dots = max(1, ms // 250)
+        return ". " * dots
+    return re.sub(r"\[pause=(\d+)\]", repl, t)
 
-if st.button("Generate Speech") and text.strip():
+if st.button("Generate Speech"):
 
-    parts = re.split(r"\[pause=(\d+)\]", text)
+    if not text.strip():
+        st.warning("Enter text first.")
+        st.stop()
 
-    audio_bytes = b""
+    processed = expand_pauses(text)
 
-    for i, part in enumerate(parts):
-        if i % 2 == 0:
-            if part.strip():
-                audio_bytes += synth_chunk(part)
-        else:
-            # pause marker — add silence by repeating tiny silent mp3 frame
-            pause_ms = int(part)
-            silence = b"\x00" * (pause_ms * 2)
-            audio_bytes += silence
+    slow_flag = speed_style != "Normal"
 
-    st.audio(audio_bytes, format="audio/mp3")
+    try:
+        tts = gTTS(processed, slow=slow_flag)
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
 
-    st.download_button(
-        "Download",
-        data=audio_bytes,
-        file_name="speech.mp3",
-        mime="audio/mp3"
-    )
+        audio_bytes = buf.getvalue()
+
+        st.audio(audio_bytes, format="audio/mp3")
+
+        st.download_button(
+            "Download Audio",
+            data=audio_bytes,
+            file_name="speech.mp3",
+            mime="audio/mp3"
+        )
+
+        st.success("Speech generated successfully.")
+
+    except Exception as e:
+        st.error(f"TTS failed: {e}")
