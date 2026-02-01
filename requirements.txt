@@ -1,7 +1,5 @@
-streamlit 
-phonemizer 
-TTS 
-soundfile 
+streamlit
+gtts
+pydub
 pandas
-pip 26.0
-python 3.11
+numpy
