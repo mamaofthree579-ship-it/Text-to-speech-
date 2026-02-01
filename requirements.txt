@@ -3,3 +3,4 @@ phonemizer
 TTS 
 soundfile 
 pandas
+pip
