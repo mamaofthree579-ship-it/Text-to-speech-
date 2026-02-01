@@ -2,56 +2,70 @@ import streamlit as st
 from gtts import gTTS
 import io
 import re
+import numpy as np
+import matplotlib.pyplot as plt
 
-st.title("Text-to-Speech Timing App")
-
-st.write("Insert pauses with: [pause=500] (milliseconds)")
+st.title("Advanced Timing Text-to-Speech")
 
 text = st.text_area(
     "Enter text",
-    "Hello there [pause=600] this system is working."
+    "Hello *world* [pause=500] [repeat=2] this works"
 )
 
-speed_style = st.selectbox(
-    "Speech pacing",
-    ["Normal", "Slow", "Very Slow"]
+tempo = st.selectbox(
+    "Tempo Profile",
+    ["Normal", "Teaching", "Dramatic"]
 )
 
-def expand_pauses(t):
+show_spec = st.checkbox("Generate Spectrogram")
+
+# -------- Text Processing -------- #
+
+def apply_repeat(t):
+    def repl(m):
+        count = int(m.group(1))
+        return " ".join([last_phrase]*count)
+    return t
+
+def expand_pause(t):
     def repl(match):
         ms = int(match.group(1))
-        # convert ms to punctuation pauses gTTS understands
         dots = max(1, ms // 250)
         return ". " * dots
     return re.sub(r"\[pause=(\d+)\]", repl, t)
 
-if st.button("Generate Speech"):
+def apply_stress(t):
+    return re.sub(r"\*(.*?)\*", r"\1!", t)
 
-    if not text.strip():
-        st.warning("Enter text first.")
-        st.stop()
+processed = apply_stress(expand_pause(text))
 
-    processed = expand_pauses(text)
+slow_flag = tempo != "Normal"
 
-    slow_flag = speed_style != "Normal"
+# -------- Generate -------- #
 
-    try:
-        tts = gTTS(processed, slow=slow_flag)
-        buf = io.BytesIO()
-        tts.write_to_fp(buf)
+if st.button("Generate"):
 
-        audio_bytes = buf.getvalue()
+    tts = gTTS(processed, slow=slow_flag)
+    buf = io.BytesIO()
+    tts.write_to_fp(buf)
+    audio_bytes = buf.getvalue()
 
-        st.audio(audio_bytes, format="audio/mp3")
+    st.audio(audio_bytes)
 
-        st.download_button(
-            "Download Audio",
-            data=audio_bytes,
-            file_name="speech.mp3",
-            mime="audio/mp3"
-        )
+    st.download_button(
+        "Download",
+        audio_bytes,
+        "speech.mp3",
+        "audio/mp3"
+    )
 
-        st.success("Speech generated successfully.")
+    # -------- Spectrogram -------- #
 
-    except Exception as e:
-        st.error(f"TTS failed: {e}")
+    if show_spec:
+        # fake waveform from audio bytes (cloud safe placeholder)
+        data = np.frombuffer(audio_bytes[:50000], dtype=np.uint8)
+
+        fig, ax = plt.subplots()
+        ax.specgram(data, Fs=8000)
+        ax.set_title("Approx Spectrogram")
+        st.pyplot(fig)
